@@ -1,0 +1,23 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ms-core-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ms-core
+  template:
+    metadata:
+      labels:
+        app: ms-core
+    spec:
+      containers:
+      - name: ms-core
+        imagePullPolicy: Always
+        image: 416170240696.dkr.ecr.us-east-1.amazonaws.com/ms-core:latest
+        ports:
+        - containerPort: 80
+      imagePullSecrets:
+        - name: my-ecr-secret

@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+  - name: 416170240696.dkr.ecr.us-east-1.amazonaws.com/ms-core
+    newName: 416170240696.dkr.ecr.us-east-1.amazonaws.com/ms-core # if you want to change the image
+    newTag: latest # if you want to change the tag
