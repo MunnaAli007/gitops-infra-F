@@ -188,32 +188,27 @@ argo-install() {
         --namespace argocd \
         --filename https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-    # in another terminal window :
-    # watch kubectl get all -n argocd
-
     log wait kubectl argocd-server must be deployed
     kubectl wait deploy argocd-server \
         --timeout=180s \
         --namespace argocd \
         --for=condition=Available=True
 
-    log patch add load balancer to argocd-server service
-    kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+    # Check if port forwarding is already running on port 8080
+    if ! lsof -i :8080 | grep -q LISTEN; then
+        # Start port-forwarding in the background
+        kubectl port-forward svc/argocd-server -n argocd 8080:443 &
+        PORT_FORWARD_PID=$!
+        log "Port forwarding started on PID $PORT_FORWARD_PID"
+    else
+        log "Port forwarding already running on port 8080"
+    fi
 
-    log wait argocd load balancer must be defined
-    # sleep here
-    while true; do
-        ARGO_LOAD_BALANCER=$(kubectl get svc argocd-server \
-            --namespace argocd \
-            --output json |
-            jq --raw-output '.status.loadBalancer.ingress[0].hostname')
-        [[ "$ARGO_LOAD_BALANCER" != 'null' ]] && break;
-    done
-    log ARGO_LOAD_BALANCER $ARGO_LOAD_BALANCER
+    log info Port-forwarding running on localhost:8080
 
-    log wait argocd load balancer must be available
-    # sleep here
-    while [[ -z $(curl $ARGO_LOAD_BALANCER 2>/dev/null) ]]; do sleep 1; done
+    # Wait for the port-forwarding to be ready using curl
+    log wait Checking for port-forwarding readiness
+    while [[ -z $(curl -k https://localhost:8080 2>/dev/null) ]]; do sleep 1; done
 
     ARGO_PASSWORD=$(kubectl get secret argocd-initial-admin-secret \
         --namespace argocd \
@@ -221,24 +216,32 @@ argo-install() {
         base64 --decode)
     log ARGO_PASSWORD $ARGO_PASSWORD
 
-    argocd login $ARGO_LOAD_BALANCER \
+    # Automatically login to Argo CD
+    argocd login localhost:8080 \
         --insecure \
-        --username=admin \
-        --password=$ARGO_PASSWORD
+        --username admin \
+        --password $ARGO_PASSWORD
 
-    log ACTION open $ARGO_LOAD_BALANCER + accept self-signed risk
+    log ACTION open localhost:8080 + accept self-signed risk
     log argocd login with ...
     log username admin
     log password $ARGO_PASSWORD
 }
 
+
+
 argo-login() {
-    SERVER=$(kubectl get svc argocd-server \
-        --context $PROJECT_NAME-dev \
-        --namespace argocd \
-        --output json |
-        jq --raw-output '.status.loadBalancer.ingress[0].hostname')
-    log SERVER $SERVER
+    # Check if port forwarding is already running on port 8080
+    if ! lsof -i :8080 | grep -q LISTEN; then
+        # Start port-forwarding in the background
+        kubectl port-forward svc/argocd-server -n argocd --context $PROJECT_NAME-dev 8080:443 &
+        PORT_FORWARD_PID=$!
+        log "Port forwarding started on PID $PORT_FORWARD_PID"
+    else
+        log "Port forwarding already running on port 8080"
+    fi
+
+    log SERVER localhost:8080
 
     log USERNAME admin
 
@@ -249,11 +252,17 @@ argo-login() {
         base64 --decode)
     log PASSWORD $PASSWORD
 
-    argocd login $SERVER \
+    # Wait for the port-forwarding to be ready using curl
+    log "Checking for port-forwarding readiness"
+    while [[ -z $(curl -k https://localhost:8080 2>/dev/null) ]]; do sleep 1; done
+
+    argocd login localhost:8080 \
         --insecure \
         --username=admin \
         --password=$PASSWORD
 }
+
+
 
 argo-add-repo() {
     if [[ ! -f ~/.ssh/$PROJECT_NAME.pem ]];
